@@ -1,0 +1,1 @@
+Copy-Item .\main.js ..\..\..\OneDrive\Documents\Obsidian\video\.obsidian\plugins\sample-plugin\main.js

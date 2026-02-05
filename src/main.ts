@@ -1,10 +1,14 @@
-import {App, Editor, MarkdownView, Modal, Notice, Plugin} from 'obsidian';
-import {DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab} from "./settings";
+import {App, Editor, MarkdownFileInfo, MarkdownView, Modal, Notice, Plugin} from 'obsidian';
+import {DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab} from "./settings.js";
+
+import getVideoMOC from "./get_video_moc.js"
 
 // Remember to rename these classes and interfaces!
 
 export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+	getVideoMOC = getVideoMOC;
+
+	settings!: MyPluginSettings;
 
 	async onload() {
 		await this.loadSettings();
@@ -31,7 +35,7 @@ export default class MyPlugin extends Plugin {
 		this.addCommand({
 			id: 'replace-selected',
 			name: 'Replace selected content',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
+			editorCallback: (editor: Editor, view: MarkdownView | MarkdownFileInfo) => {
 				editor.replaceSelection('Sample editor command');
 			}
 		});
@@ -61,9 +65,9 @@ export default class MyPlugin extends Plugin {
 
 		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
 		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			new Notice("Click");
-		});
+		// this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
+		// 	new Notice("Click");
+		// });
 
 		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
 		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));

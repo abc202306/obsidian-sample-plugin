@@ -1,5 +1,5 @@
 import {App, PluginSettingTab, Setting} from "obsidian";
-import MyPlugin from "./main";
+import MyPlugin from "./main.js";
 
 export interface MyPluginSettings {
 	mySetting: string;
