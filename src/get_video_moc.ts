@@ -36,7 +36,7 @@ class Page {
     file: TFile;
     note: FrontMatterCache;
     formula: Record<string, any>;
-    constructor({file, note, formula}: {file: TFile, note: FrontMatterCache, formula: Record<string, any>}) {
+    constructor({ file, note, formula }: { file: TFile, note: FrontMatterCache, formula: Record<string, any> }) {
         this.file = file;
         this.note = note;
         this.formula = formula;
@@ -62,7 +62,8 @@ class AstNodeTemplate {
         return docNode;
     }
     private static collectionMOC(folderPath: string): AstNode[] {
-        const nodeArrArr: AstNode[][] = app.vault.getMarkdownFiles()
+        const folderHeadingText = StringTemplate.getFolderHeadingText(folderPath);
+        const pages = app.vault.getMarkdownFiles()
             .filter((file: TFile) => file.path.startsWith(folderPath))
             .map((file: TFile) => {
                 const fileCache = app.metadataCache.getFileCache(file);
@@ -83,20 +84,42 @@ class AstNodeTemplate {
                     formula,
                     note
                 })
-            }).sort((a: Page, b: Page) => b.note.ctime.localeCompare(a.note.ctime))
-            .map(AstNodeTemplate.itemSection);
+            }).sort((a: Page, b: Page) => b.note.ctime?.localeCompare(a.note.ctime));
+        const groupEntries = (Object.entries(Object.groupBy(pages, (page: Page) => "" + page.note?.categories?.[0]))
+            .filter(e => e[1] !== undefined) as [string, Page[]][])
+            .sort((e1, e2) => e1[0].localeCompare(e2[0]));
+
+        const nodeArrArr02 = groupEntries.map(([key, pageItems]) => {
+            const nodeArrArr01: AstNode[][] = pageItems
+                .sort((a: Page, b: Page) => b.note.ctime?.localeCompare(a.note.ctime))
+                .map(page => AstNodeTemplate.itemSection(page, 4));
+            const link = Link.parseWikiLink(key);
+            return [
+                AstNode.h({ headingLevel: 3 }).setChildren([AstNode.mdText({ data: `group-${folderHeadingText}-by-category-${link?.display}` })]),
+                AstNode.ul().setChildren(nodeArrArr01.map(nodeArr => AstNode.li().setChildren([nodeArr[1] as AstNode]))),
+                ...nodeArrArr01.flatMap(nodeArr => nodeArr)
+            ]
+        })
 
         return [
             AstNode.h({ headingLevel: 2 }).setChildren([
-                AstNode.mdText({ data: StringTemplate.getFolderHeadingText(folderPath) })
+                AstNode.mdText({ data: folderHeadingText })
             ]),
-            AstNode.ul().setChildren(nodeArrArr.map(nodeArr => AstNode.li().setChildren([nodeArr[1] as AstNode]))),
-            ...nodeArrArr.flatMap(nodeArr => nodeArr)
+            AstNode.ul().setChildren(nodeArrArr02.map(nodeArr=>{
+                const h3Text = nodeArr[0]?.children[0]?.data || "";
+                const display = /.*-(.*)/.exec(h3Text)?.[1] || "";
+                
+                return AstNode.li().setChildren([
+                    AstNode.p().setChildren([AstNode.textMarkA({textMarkAHref: `#${h3Text}`, textMarkTextContent:display})]),
+                    nodeArr[1]!!
+                ])
+            })),
+            ...nodeArrArr02.flatMap(nodeArr => nodeArr)
         ];
     }
 
     private static tagParagraph(page: Page): AstNode {
-        const {note, formula} = page;
+        const { note, formula } = page;
         const tagParagraphChildren = ArrayUtil.safeArray(note?.categories).concat(ArrayUtil.safeArray(note?.keywords)).concat(formula?.tags).map(k => {
             const wikilinkObj = Link.parseWikiLink(k);
             if (!wikilinkObj) {
@@ -116,7 +139,7 @@ class AstNodeTemplate {
     }
 
     private static additionalInfo(page: Page): AstNode {
-        const {formula} = page;
+        const { formula } = page;
         if (!formula?.additionalInfo || formula?.additionalInfo.length === 0) {
             return AstNode.p().setChildren([AstNode.text({ data: "No additional note" })]);
         }
@@ -139,10 +162,10 @@ class AstNodeTemplate {
         return node;
     }
 
-    private static itemSection(page: Page): AstNode[] {
-        const {file, note, formula} = page;
+    private static itemSection(page: Page, headingLevel: number): AstNode[] {
+        const { file, note, formula } = page;
         return [
-            AstNode.h({ headingLevel: 3 }).setChildren([AstNode.mdText({ data: file.basename })]),
+            AstNode.h({ headingLevel }).setChildren([AstNode.mdText({ data: file.basename })]),
             AstNode.p().setChildren([
                 AstNode.textMarkA({ textMarkAHref: `#${file.basename}`, textMarkTextContent: note?.title }),
                 AstNode.text({ data: ` | ` }),
