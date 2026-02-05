@@ -40,19 +40,19 @@ export default class Link {
     }
 
     toWikiLink() {
-        return AstNode.textMarkBlockRef(this.path, this.display);
+        return AstNode.textMarkBlockRef({ textMarkBlockRefId: this.path, textMarkTextContent: this.display });
     }
 
     toMDLink() {
         const file = app.metadataCache.getFirstLinkpathDest(this.path);
         const href = file ? file.path : this.path;
         const textContent = this.display || href;
-        return AstNode.textMarkA(href, textContent);
+        return AstNode.textMarkA({ textMarkAHref: href, textMarkTextContent: textContent });
     }
 
     toImageNode(width: number = Config.DEFAULT_IMAGE_WIDTH): AstNode | null {
         const file = app.metadataCache.getFirstLinkpathDest(this.path);
         if (!file || !["jpg", "png", "webp", "svg"].includes(file.extension)) return null;
-        return AstNode.image(file.path, this.display || '', width);
+        return AstNode.image({ src: file.path, alt: this.display || '', width: width });
     }
 }

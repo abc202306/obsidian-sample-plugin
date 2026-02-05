@@ -162,11 +162,11 @@ export default class AstNode {
         return new AstNode(AstNodeType.nodeTable);
     }
 
-    static text(data: string): AstNode {
+    static text({ data }: { data: string }): AstNode {
         return new AstNode(AstNodeType.nodeText).setData(data);
     }
 
-    static mdText(data: string): AstNode {
+    static mdText({ data }: { data: string }): AstNode {
         return new AstNode(AstNodeType.nodeMDText).setData(data);
     }
 
@@ -174,19 +174,19 @@ export default class AstNode {
         return new AstNode(AstNodeType.nodeBr).setData("br");
     }
 
-    static textMarkA(href: string, textContent: string): AstNode {
+    static textMarkA({ textMarkAHref, textMarkTextContent }: { textMarkAHref: string, textMarkTextContent: string }): AstNode {
         const node = new AstNode(AstNodeType.nodeTextMark);
         node.textMarkType = TextMarkType.a;
-        node.textMarkAHref = href;
-        node.textMarkTextContent = textContent;
+        node.textMarkAHref = textMarkAHref;
+        node.textMarkTextContent = textMarkTextContent;
         return node;
     }
 
-    static textMarkBlockRef(blockRefId: string, textContent: string | null): AstNode {
+    static textMarkBlockRef({ textMarkBlockRefId, textMarkTextContent }: { textMarkBlockRefId: string, textMarkTextContent: string | null }): AstNode {
         const node = new AstNode(AstNodeType.nodeTextMark);
         node.textMarkType = TextMarkType.blockRef;
-        node.textMarkBlockRefId = blockRefId;
-        node.textMarkTextContent = textContent;
+        node.textMarkBlockRefId = textMarkBlockRefId;
+        node.textMarkTextContent = textMarkTextContent;
         return node;
     }
 
@@ -210,25 +210,25 @@ export default class AstNode {
         return new AstNode(AstNodeType.nodeCloseParen);
     }
 
-    static linkText(text: string): AstNode {
-        return new AstNode(AstNodeType.nodeLinkText).setData(text);
+    static linkText({data}:{data: string}): AstNode {
+        return new AstNode(AstNodeType.nodeLinkText).setData(data);
     }
 
-    static linkDest(dest: string): AstNode {
-        return new AstNode(AstNodeType.nodeLinkDest).setData(dest);
+    static linkDest({data}:{data: string}): AstNode {
+        return new AstNode(AstNodeType.nodeLinkDest).setData(data);
     }
 
-    static image(src: string, alt: string = '', width: number = Config.DEFAULT_IMAGE_WIDTH): AstNode {
+    static image({src, alt = "", width = Config.DEFAULT_IMAGE_WIDTH}:{src: string, alt: string, width: number}): AstNode {
         const node = new AstNode(AstNodeType.nodeImage);
 
         node.properties = { width };
         node.setChildren([
             AstNode.bang(),
             AstNode.openBracket(),
-            AstNode.linkText(alt),
+            AstNode.linkText({data: alt}),
             AstNode.closeBracket(),
             AstNode.openParen(),
-            AstNode.linkDest(src),
+            AstNode.linkDest({data: src}),
             AstNode.closeParen()
         ]);
 
@@ -236,9 +236,7 @@ export default class AstNode {
     }
 
     static blockquoteMarker(): AstNode {
-        const node = new AstNode(AstNodeType.nodeBlockquoteMarker);
-        node.data = "\u003e";
-        return node;
+        return new AstNode(AstNodeType.nodeBlockquoteMarker).setData("\u003e");
     }
 
     static blockquote(): AstNode {
@@ -257,8 +255,8 @@ export default class AstNode {
         return new AstNode(AstNodeType.nodeList);
     }
 
-    static h(level: number): AstNode {
-        return new AstNode(AstNodeType.nodeHeading).setHeadingLevel(level);
+    static h({headingLevel}:{headingLevel:number}): AstNode {
+        return new AstNode(AstNodeType.nodeHeading).setHeadingLevel(headingLevel);
     }
 
     static doc(): AstNode {
