@@ -2,13 +2,60 @@
  * @version v1.0.1.20260204
  */
 
-import { App, FrontMatterCache, MarkdownFileInfo, TFile } from "obsidian";
+import { App, CachedMetadata, FrontMatterCache, MetadataCache, TFile } from "obsidian";
 
 import ArrayUtil from "./util/arrayutil.js"
 import AstNode from "./model/astnode.js";
 import Link from "./model/link.js";
 
 declare const app: App;
+
+
+class Page {
+    file: TFile;
+    fileCache: CachedMetadata;
+    note: FrontMatterCache;
+    formula: Record<string, any>;
+    constructor({ file, fileCache, note, formula }: { file: TFile, fileCache: CachedMetadata, note: FrontMatterCache, formula: Record<string, any> }) {
+        this.file = file;
+        this.fileCache = fileCache;
+        this.note = note;
+        this.formula = formula;
+    }
+    public static getPages(folderPath: string): Page[] {
+        return app.vault.getMarkdownFiles()
+            .filter((file: TFile) => file.path.startsWith(folderPath))
+            .map((file: TFile) => {
+                const fileCache = app.metadataCache.getFileCache(file)!!;
+                const note = fileCache?.frontmatter || {};
+                const additionalInfo = Object.entries(note)
+                    .filter(([key, _]) => !["title", "url", "ctime", "description", "cover", "icon", "comment", "keywords", "categories", "tags"].includes(key))
+                    .reduce((obj, [key, value]) => {
+                        if (value === null || value === undefined) return obj;
+                        obj[key] = value;
+                        return obj;
+                    }, {} as any);
+                if (note.icon) {
+                    additionalInfo.cover = note.cover;
+                }
+                if (note.cover) {
+                    additionalInfo.cover = note.icon;
+                }
+                const formula = {
+                    tags: StringTemplate.tags({ note, fileCache }),
+                    categories: note.categories,
+                    additionalInfo,
+                    image: note.cover || note.icon || note.image
+                }
+                return new Page({
+                    file,
+                    fileCache,
+                    formula,
+                    note
+                })
+            }).sort((a: Page, b: Page) => b.note.ctime?.localeCompare(a.note.ctime));
+    }
+}
 
 class StringTemplate {
     public static getFolderHeadingText(folderPath: string): string {
@@ -30,16 +77,13 @@ class StringTemplate {
         }
         return comment;
     }
-}
 
-class Page {
-    file: TFile;
-    note: FrontMatterCache;
-    formula: Record<string, any>;
-    constructor({ file, note, formula }: { file: TFile, note: FrontMatterCache, formula: Record<string, any> }) {
-        this.file = file;
-        this.note = note;
-        this.formula = formula;
+    public static tagsFromFileCache({ fileCache }: { fileCache: CachedMetadata }): string[] {
+        return ArrayUtil.safeArray(fileCache?.tags?.map((tagInfo: { tag: string }) => tagInfo.tag.slice(1))?.unique())
+    }
+
+    public static tags({ note, fileCache }: { note: FrontMatterCache, fileCache: CachedMetadata }): string[] {
+        return ArrayUtil.safeArray(note.tags).concat(StringTemplate.tagsFromFileCache({ fileCache }));
     }
 }
 
@@ -47,74 +91,83 @@ class AstNodeTemplate {
     public static moc(FOLDER_ARRAY: string[]): AstNode {
         const infoArray: { li: AstNode, mocData: AstNode[] }[] = FOLDER_ARRAY.map(folder => {
             const folderHeadingText = StringTemplate.getFolderHeadingText(folder);
-            const mocData = AstNodeTemplate.collectionMOC(folder);
-            const ul = mocData[1]!!;
+            const mocData = AstNodeTemplate.folderMOC(folder);
             const li = AstNode.li().setChildren([
                 AstNode.p().setChildren([AstNode.textMarkA({ textMarkAHref: `#${folderHeadingText}`, textMarkTextContent: folderHeadingText })]),
-                ul
+                mocData[1]!!
             ])
             return { li, mocData };
         })
         const docNode = AstNode.doc().setChildren([
-            AstNode.blockquote().setChildren([AstNode.ul().setChildren(infoArray.map(info => info.li))]),
-            ...infoArray.flatMap(info => info.mocData)
+            AstNode.h({ headingLevel: 2 }).setChildren([AstNode.mdText({ data: "table-of-contents" })]),
+            AstNode.blockquote().setChildren([AstNode.ul().setChildren([
+                ...infoArray.map(info => info.li),
+                AstNode.li().setChildren([
+                    AstNode.p().setChildren([AstNode.textMarkA({ textMarkAHref: "#categories", textMarkTextContent: "categories" })])
+                ]),
+                AstNode.li().setChildren([
+                    AstNode.p().setChildren([AstNode.textMarkA({ textMarkAHref: "#tags", textMarkTextContent: "tags" })])
+                ])
+            ])]),
+            ...infoArray.flatMap(info => info.mocData),
+            AstNode.h({ headingLevel: 2 }).setChildren([AstNode.mdText({ data: "categories" })]),
+            ...AstNodeTemplate.indexMOC(FOLDER_ARRAY, "categories", "category", false),
+            AstNode.h({ headingLevel: 2 }).setChildren([AstNode.mdText({ data: "tags" })]),
+            ...AstNodeTemplate.indexMOC(FOLDER_ARRAY, "tags", "tag", false)
         ]);
         return docNode;
     }
-    private static collectionMOC(folderPath: string): AstNode[] {
-        const folderHeadingText = StringTemplate.getFolderHeadingText(folderPath);
-        const pages = app.vault.getMarkdownFiles()
-            .filter((file: TFile) => file.path.startsWith(folderPath))
-            .map((file: TFile) => {
-                const fileCache = app.metadataCache.getFileCache(file);
-                const note = fileCache?.frontmatter || {};
-                const formula = {
-                    tags: ArrayUtil.safeArray(note.tags).concat(ArrayUtil.safeArray(fileCache?.tags?.map((tagInfo: { tag: string }) => tagInfo.tag.slice(1))?.unique())),
-                    additionalInfo: Object.entries(note)
-                        .filter(([key, _]) => !["title", "url", "ctime", "description", "cover", "icon", "comment", "keywords", "categories", "tags"].includes(key))
-                        .reduce((obj, [key, value]) => {
-                            if (value === null || value === undefined) return obj;
-                            obj[key] = value;
-                            return obj;
-                        }, {} as any),
-                    image: note.cover || note.icon || note.image
-                }
-                return new Page({
-                    file,
-                    formula,
-                    note
-                })
-            }).sort((a: Page, b: Page) => b.note.ctime?.localeCompare(a.note.ctime));
-        const groupEntries = (Object.entries(Object.groupBy(pages, (page: Page) => "" + page.note?.categories?.[0]))
-            .filter(e => e[1] !== undefined) as [string, Page[]][])
-            .sort((e1, e2) => e1[0].localeCompare(e2[0]));
 
-        const nodeArrArr02 = groupEntries.map(([key, pageItems]) => {
-            const nodeArrArr01: AstNode[][] = pageItems
-                .sort((a: Page, b: Page) => b.note.ctime?.localeCompare(a.note.ctime))
-                .map(page => AstNodeTemplate.itemSection(page, 4));
-            const link = Link.parseWikiLink(key);
+    public static indexMOC(FOLDER_ARRAY: string[], keyName: string, keyNameSingular: string, disableDispSingleResultIndex: boolean): AstNode[] {
+        const pages = FOLDER_ARRAY.flatMap(folderPath => Page.getPages(folderPath));
+        const keyPageMap: Map<string, Page[]> = new Map();
+        pages.forEach((page) => {
+            ArrayUtil.safeArray(page.formula[keyName]).forEach(key => {
+                if (keyPageMap.get(key)) {
+                    keyPageMap.get(key)?.push(page);
+                } else {
+                    keyPageMap.set(key, [page]);
+                }
+            })
+        });
+        const entries = [...keyPageMap.entries()].filter(e => disableDispSingleResultIndex ? (e[1].length >= 2) : true).sort((a, b) => a[0].localeCompare(b[0]));
+        function getKeyDisplay(key: any) {
+            return Link.parseWikiLink(key)?.path || key;
+        }
+        const ul = AstNode.ul().setChildren(entries.map(([key, pageItems]) => {
+            return AstNode.li().setChildren([
+                AstNode.p().setChildren([
+                    AstNode.textMarkA({ textMarkAHref: `#idx-${keyNameSingular}-${getKeyDisplay(key)}`, textMarkTextContent: `${getKeyDisplay(key)}` }),
+                    AstNode.text({ data: ` | ${pageItems.length}` })
+                ]),
+            ])
+        }));
+
+        const keySectionNodes = entries.flatMap(([key, pageItems]) => {
             return [
-                AstNode.h({ headingLevel: 3 }).setChildren([AstNode.mdText({ data: `group-${folderHeadingText}-by-category-${link?.display}` })]),
-                AstNode.ul().setChildren(nodeArrArr01.map(nodeArr => AstNode.li().setChildren([nodeArr[1] as AstNode]))),
-                ...nodeArrArr01.flatMap(nodeArr => nodeArr)
+                AstNode.h({ headingLevel: 3 }).setChildren([AstNode.mdText({ data: `idx-${keyNameSingular}-${getKeyDisplay(key)}` })]),
+                AstNode.ul().setChildren(pageItems.map(page => {
+                    return AstNode.li().setChildren([AstNodeTemplate.titleParagraph(page)])
+                }))
             ]
         })
+
+        return [ul, ...keySectionNodes];
+    }
+    private static folderMOC(folderPath: string): AstNode[] {
+        const folderHeadingText = StringTemplate.getFolderHeadingText(folderPath);
+        const pages = Page.getPages(folderPath);
+
+        const nodeArrArr: AstNode[][] = pages
+            .sort((a: Page, b: Page) => b.note.ctime?.localeCompare(a.note.ctime))
+            .map(page => AstNodeTemplate.itemSection(page, 3));
 
         return [
             AstNode.h({ headingLevel: 2 }).setChildren([
                 AstNode.mdText({ data: folderHeadingText })
             ]),
-            AstNode.ul().setChildren(nodeArrArr02.map(nodeArr=>{
-                const h3Text = nodeArr[0]?.children[0]?.data || "";
-                const display = /.*-(.*)/.exec(h3Text)?.[1] || "";
-                
-                return AstNode.li().setChildren([
-                    AstNode.p().setChildren([AstNode.textMarkA({textMarkAHref: `#${h3Text}`, textMarkTextContent:display})]),
-                    nodeArr[1]!!
-                ])
-            })),
-            ...nodeArrArr02.flatMap(nodeArr => nodeArr)
+            AstNode.ul().setChildren(nodeArrArr.map(nodeArr => AstNode.li().setChildren([nodeArr[1]!!]))),
+            ...nodeArrArr.flatMap(nodeArr => nodeArr),
         ];
     }
 
@@ -162,17 +215,22 @@ class AstNodeTemplate {
         return node;
     }
 
+    public static titleParagraph(page: Page): AstNode {
+        const { file, note } = page;
+        return AstNode.p().setChildren([
+            AstNode.textMarkA({ textMarkAHref: `#${file.basename}`, textMarkTextContent: note?.title || file.basename }),
+            AstNode.text({ data: ` | ` }),
+            AstNode.textMarkBlockRef({ textMarkBlockRefId: file.path, textMarkTextContent: "📄" }),
+            AstNode.text({ data: ` | ` }),
+            AstNode.textMarkA({ textMarkAHref: note?.url, textMarkTextContent: "🔗" }),
+        ])
+    }
+
     private static itemSection(page: Page, headingLevel: number): AstNode[] {
         const { file, note, formula } = page;
         return [
             AstNode.h({ headingLevel }).setChildren([AstNode.mdText({ data: file.basename })]),
-            AstNode.p().setChildren([
-                AstNode.textMarkA({ textMarkAHref: `#${file.basename}`, textMarkTextContent: note?.title }),
-                AstNode.text({ data: ` | ` }),
-                AstNode.textMarkBlockRef({ textMarkBlockRefId: file.path, textMarkTextContent: "file" }),
-                AstNode.text({ data: ` | ` }),
-                AstNode.textMarkA({ textMarkAHref: note?.url, textMarkTextContent: "url" }),
-            ]),
+            AstNodeTemplate.titleParagraph(page),
             AstNode.p().setChildren([
                 AstNode.mdText({ data: note?.description || "No description" })
             ]),
@@ -207,6 +265,8 @@ class AstNodeTemplate {
                 return [mdlinkObj.toMDLink()];
             } else if (/^http(s)?:\/\//.test(value)) {
                 return [AstNode.textMarkA({ textMarkAHref: value, textMarkTextContent: value })];
+            } else if (/^mailto:/.test(value)) {
+                return [AstNode.textMarkA({ textMarkAHref: value, textMarkTextContent: value.replace(/^mailto:/, "") })];
             } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
                 return [AstNode.mdText({ data: value })]
             } else {

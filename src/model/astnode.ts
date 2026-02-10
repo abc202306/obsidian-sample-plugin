@@ -115,7 +115,7 @@ export default class AstNode {
                         return childStr;
                     }
                     const childStr = child.toString(indent).split("\n").map(line => {
-                        const newLine = `${TAB.repeat(indent)}${i === 0 ? DASH : " "} ${line}`;
+                        const newLine = `${TAB.repeat(indent)}${i === 0 ? DASH : " ".repeat(DASH.length)} ${line}`;
                         i++;
                         return newLine;
                     }).join("\n");
